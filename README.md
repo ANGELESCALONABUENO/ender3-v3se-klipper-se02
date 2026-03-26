@@ -85,6 +85,16 @@ Ver `sync_lane0/cron_example.txt`.
 - Revisa `position_min/max`, `max_temp`, `max_velocity` y valores PID antes de usar en otra impresora.
 - No aplicar este perfil sin recalibrar `z_offset`, mesh y temperaturas para tu hardware.
 
+## Hotfix: PRTOUCH_PROBE_ZOFFSET (probe_result inmutable)
+
+Si al ejecutar `calibrar_punta` / `PRTOUCH_PROBE_ZOFFSET` Klipper entra en shutdown con:
+
+- `TypeError: 'probe_result' object does not support item assignment`
+
+Aplica el hotfix documentado (se parchea `prtouch.py` dentro de Klipper en la Raspberry):
+
+- Ver [docs/patch-prtouch-probe-result.md](docs/patch-prtouch-probe-result.md)
+
 ## Proyecto y colaboracion
 
 - Changelog: `CHANGELOG.md`
