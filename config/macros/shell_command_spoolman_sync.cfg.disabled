@@ -1,0 +1,4 @@
+[gcode_shell_command spoolman_sync]
+command: /usr/bin/python3 /home/pi/printer_data/scripts/spoolman_sync.py
+timeout: 30.
+verbose: True
