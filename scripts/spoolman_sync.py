@@ -17,7 +17,6 @@ def _log(msg: str) -> None:
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write(line)
     except Exception:
-        # Logging nunca debe romper el sync
         pass
 
 
@@ -33,7 +32,7 @@ def _http_json(url: str, method: str = "GET", body: dict | None = None, timeout_
     return json.loads(raw) if raw else {}
 
 
-def _post_gcode_with_retry(moonraker: str, script: str, attempts: int = 5) -> None:
+def _post_gcode_with_retry(moonraker: str, script: str, attempts: int = 6) -> None:
     last_err: Exception | None = None
     for i in range(attempts):
         try:
@@ -41,24 +40,45 @@ def _post_gcode_with_retry(moonraker: str, script: str, attempts: int = 5) -> No
                 f"{moonraker}/printer/gcode/script",
                 method="POST",
                 body={"script": script},
-                timeout_s=10.0,
+                timeout_s=8.0,
             )
             return
         except urllib.error.HTTPError as e:
-            # 503 suele ocurrir cuando Klippy está reiniciando/no listo.
-            if e.code == 503 and i < attempts - 1:
-                last_err = e
-                time.sleep(0.5 + (i * 0.5))
+            last_err = e
+            if i < attempts - 1:
+                time.sleep(0.4 + (i * 0.4))
                 continue
             raise
         except Exception as e:
             last_err = e
             if i < attempts - 1:
-                time.sleep(0.5 + (i * 0.5))
+                time.sleep(0.4 + (i * 0.4))
                 continue
             raise
     if last_err is not None:
         raise last_err
+
+
+def _to_bool_int(val) -> int:
+    if isinstance(val, bool):
+        return 1 if val else 0
+    if val is None:
+        return 0
+    s = str(val).strip().lower()
+    if s in ("1", "true", "yes", "on", "si", "sí"):
+        return 1
+    return 0
+
+
+def _parse_float(extra: dict, keys: tuple[str, ...], default=None):
+    for k in keys:
+        v = extra.get(k)
+        if v not in (None, ""):
+            try:
+                return float(str(v).strip())
+            except Exception:
+                continue
+    return default
 
 
 def main() -> int:
@@ -67,71 +87,41 @@ def main() -> int:
 
     _log(f"start moonraker={moonraker} spoolman={spoolman_server}")
 
-    # Skip durante impresion activa -- evita flood de consola y competencia con MCU
+    # Durante impresion solo saltar si ya estamos sincronizados; si synced=0, intentar recuperar.
     try:
-        ps = _http_json(f"{moonraker}/printer/objects/query?print_stats=state")
-        print_state = (
-            ps.get("result", {})
-            .get("status", {})
-            .get("print_stats", {})
-            .get("state", "")
+        ps = _http_json(
+            f"{moonraker}/printer/objects/query?print_stats=state&gcode_macro%20SPOOLMAN_ACTIVE=synced"
         )
-        if print_state in ("printing", "paused"):
-            _log(f"skip: state={print_state}")
-            print(f"spoolman_sync: skip (state={print_state})")
+        status = ps.get("result", {}).get("status", {})
+        print_state = status.get("print_stats", {}).get("state", "")
+        synced = int(status.get("gcode_macro SPOOLMAN_ACTIVE", {}).get("synced", 0))
+        if print_state in ("printing", "paused") and synced == 1:
+            _log(f"skip: state={print_state} synced={synced}")
+            print(f"spoolman_sync: skip (state={print_state}, synced={synced})")
             return 0
     except Exception as e:
-        _log(f"warn: no se pudo verificar estado de impresion: {e!r}")
+        _log(f"warn: no se pudo verificar estado/synced: {e!r}")
 
     status = _http_json(f"{moonraker}/server/spoolman/status")
     spool_id = (status.get("result") or {}).get("spool_id")
     if spool_id in (None, "", "None"):
-        # No spool activo, no es error
         _log("no active spool_id")
         print("spoolman_sync: no active spool_id")
         return 0
 
     spool = _http_json(f"{spoolman_server}/api/v1/spool/{spool_id}")
     filament = spool.get("filament") or {}
+    filament_extra = filament.get("extra") or {}
 
-    # Datos cuantitativos del spool
     remaining_g = spool.get("remaining_weight")
-
-    vendor_obj = filament.get("vendor")
-    if isinstance(vendor_obj, dict):
-        vendor = vendor_obj.get("name") or ""
-    else:
-        vendor = vendor_obj or ""
-    filament_name = filament.get("name") or ""
-    material = filament.get("material") or ""
-
-    # Temperaturas recomendadas (si existen en Spoolman)
     nozzle_temp = filament.get("settings_extruder_temp")
     bed_temp = filament.get("settings_bed_temp")
 
-    pa = None
-    # En tu instancia real: filament.extra.pressure_advance (string)
-    filament_extra = filament.get("extra") or {}
-    for key in ("pressure_advance", "advance", "pa", "pressureAdvance", "pressure-advance"):
-        val = filament_extra.get(key)
-        if val not in (None, ""):
-            pa = val
-            break
-
-    def sanitize_param(val: str) -> str:
-        # Klipper params no soportan strings con espacios/comillas sin quoting,
-        # y luego SET_GCODE_VARIABLE requiere un literal parseable.
-        # Normalizamos a tokens seguros.
-        return (
-            str(val)
-            .replace("\"", "")
-            .replace("'", "")
-            .replace(" ", "_")
-            .strip()
-        )
+    pa = _parse_float(filament_extra, ("pressure_advance", "advance", "pa", "pressureAdvance", "pressure-advance"), default=0.1)
+    z_offset = _parse_float(filament_extra, ("z_offset", "z-offset", "zoffset", "material_z_offset"), default=None)
+    fan_lock = _to_bool_int(filament_extra.get("fan_lock", 0))
 
     script = "SYNC_SPOOLMAN_NOW"
-    # Temperaturas/stock ayudan a monitoreo y a perfil Generic.
     try:
         if nozzle_temp not in (None, ""):
             script += f" NOZZLE={float(nozzle_temp)}"
@@ -148,30 +138,23 @@ def main() -> int:
     except Exception:
         pass
 
-    # Siempre enviar identidad/material para no heredar valores del spool anterior
-    script += f" VENDOR={sanitize_param(vendor)}"
-    script += f" FILAMENT_NAME={sanitize_param(filament_name)}"
-    script += f" MATERIAL={sanitize_param(material)}"
-    pa_f: float | None
     if pa is not None:
-        try:
-            pa_f = float(str(pa).strip())
-        except Exception:
-            pa_f = None
-    else:
-        pa_f = 0.1
-    # Siempre enviar PA (si no viene en Spoolman, cae al default 0.1)
-    if pa_f is not None:
-        script += f" PRESSURE_ADVANCE={pa_f}"
+        script += f" PRESSURE_ADVANCE={float(pa)}"
+    if z_offset is not None:
+        script += f" Z_OFFSET={float(z_offset)}"
+    script += f" FAN_LOCK={int(fan_lock)}"
 
     _post_gcode_with_retry(moonraker, script, attempts=6)
 
     _log(
         "ok "
-        + f"spool_id={spool_id} vendor={vendor!r} name={filament_name!r} material={material!r} pa={pa!r} "
+        + f"spool_id={spool_id} noz={nozzle_temp!r} bed={bed_temp!r} pa={pa!r} z_offset={z_offset!r} fan_lock={fan_lock} "
         + f"posted={script!r}"
     )
-    print(f"spoolman_sync: ok spool_id={spool_id} vendor={vendor!r} name={filament_name!r} material={material!r} pa={pa!r}")
+    print(
+        f"spoolman_sync: ok spool_id={spool_id} noz={nozzle_temp!r} bed={bed_temp!r} "
+        + f"pa={pa!r} z_offset={z_offset!r} fan_lock={fan_lock}"
+    )
     return 0
 
 
@@ -181,5 +164,4 @@ if __name__ == "__main__":
     except Exception as e:
         _log(f"error: {e!r}")
         print(f"spoolman_sync: error: {e}", file=sys.stderr)
-        return_code = 1
-        raise SystemExit(return_code)
+        raise SystemExit(1)
