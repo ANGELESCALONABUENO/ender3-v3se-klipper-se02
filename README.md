@@ -24,6 +24,8 @@ Configuracion productiva para Ender 3 V3 SE con enfoque en operacion diaria:
 	- Bloques especificos V3 SE (`prtouch`, sensor de filamento)
 - `sync_lane0/`
 	- Script de sincronizacion lane0 + docs + cron example
+- `HOSTS.md`
+	- Mapeo de impresoras/hosts de este repo (SE01, SE02, MA01) y sus IPs Tailscale
 
 ## Caracteristicas clave
 
