@@ -47,3 +47,24 @@ The format is based on Keep a Changelog.
 - Modular macro layout (`start_print`, `queue_and_finish`, `tooling_macros`, `spoolman_bridge`).
 - Spoolman lane0 sync script and cron examples.
 - Filament watchdog documentation and low-stock pause flow.
+
+## [2026-05-10] - z_offset Hotfix for SE01
+
+### Fixed
+- **SE01 z_offset sync**: SE01 was running an outdated `spoolman_sync.py` that did not parse `z_offset` from Spoolman filament extras. Updated all 3 hosts (SE01/.1, SE02/.2, MA01/.3) with new version that includes:
+  - New `_parse_float()` helper for robust parsing of numeric extras
+  - New `_to_bool_int()` helper for boolean extras (fan_lock)
+  - z_offset parsing: checks for `z_offset`, `z-offset`, `zoffset`, `material_z_offset` keys
+  - fan_lock parsing: converts Spoolman boolean to Klipper integer (0/1)
+  - Enhanced retry logic: attempts increased from 5 to 6
+
+### Deployed
+- `scripts/spoolman_sync.py` updated in all 3 printer hosts
+- SE01 now correctly syncs `Z_OFFSET` parameter to `SYNC_SPOOLMAN_NOW` macro
+- SE02/MA01 verified operational (no z_offset regression)
+
+### Verification
+- All 3 hosts report `Klippy state = ready`
+- File deployment via Moonraker API successful on SE01/.1, SE02/.2, MA01/.3
+- Manual test required: Verify SE01 `spoolman_sync.log` shows `z_offset=X.XX` in next sync cycle
+
