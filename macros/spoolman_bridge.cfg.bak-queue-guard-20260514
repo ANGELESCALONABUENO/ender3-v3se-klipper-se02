@@ -9,29 +9,10 @@ variable_material: ""
 variable_pressure_advance: 0.1
 variable_z_offset: 0.0
 variable_fan_lock: 0
+variable_initial_purge_distance: 100.0
 variable_synced: 0
 gcode:
-  { action_respond_info("Spoolman -> nozzle=" ~ nozzle_temp ~ " bed=" ~ bed_temp ~ " remaining_g=" ~ remaining_g ~ " vendor='" ~ vendor ~ "' name='" ~ filament_name ~ "' material='" ~ material ~ "' pa=" ~ pressure_advance ~ " synced=" ~ synced) }
-
-[delayed_gcode RESTORE_SPOOLMAN_CACHE_ON_BOOT]
-initial_duration: 2
-gcode:
-  {% set svv = printer.save_variables.variables %}
-  {% set cached_synced = svv['spoolman_cache_synced']|default(0)|int %}
-  {% set cached_nozzle = svv['spoolman_cache_nozzle']|default(200.0)|float %}
-  {% set cached_bed = svv['spoolman_cache_bed']|default(60.0)|float %}
-  {% set cached_z = svv['spoolman_cache_z_offset']|default(0.0)|float %}
-  {% set cached_pa = svv['spoolman_cache_pa']|default(0.1)|float %}
-  {% set cached_fan = svv['spoolman_cache_fan_lock']|default(0)|int %}
-  {% if printer["gcode_macro SPOOLMAN_ACTIVE"].synced|default(0)|int == 0 and cached_synced == 1 %}
-    SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=nozzle_temp VALUE={cached_nozzle}
-    SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=bed_temp VALUE={cached_bed}
-    SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=z_offset VALUE={cached_z}
-    SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=pressure_advance VALUE={cached_pa}
-    SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=fan_lock VALUE={cached_fan}
-    SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=synced VALUE=1
-    { action_respond_info("SPOOLMAN cache restaurada tras reinicio: noz=" ~ cached_nozzle ~ " bed=" ~ cached_bed ~ " z_offset=" ~ ("%+.3f" % cached_z) ~ " pa=" ~ cached_pa ~ " fan_lock=" ~ cached_fan) }
-  {% endif %}
+  { action_respond_info("Spoolman -> nozzle=" ~ nozzle_temp ~ " bed=" ~ bed_temp ~ " remaining_g=" ~ remaining_g ~ " vendor='" ~ vendor ~ "' name='" ~ filament_name ~ "' material='" ~ material ~ "' pa=" ~ pressure_advance ~ " purge_mm=" ~ initial_purge_distance ~ " synced=" ~ synced) }
 
 [gcode_macro SYNC_SPOOLMAN_NOW]
 description: Sincroniza datos del spool activo (temperaturas, identidad y PA)
@@ -45,14 +26,13 @@ gcode:
   {% set has_pa = params.PRESSURE_ADVANCE is defined %}
   {% set has_z = params.Z_OFFSET is defined %}
   {% set has_fan = params.FAN_LOCK is defined %}
+  {% set has_purge = params.INITIAL_PURGE_DISTANCE is defined %}
 
   {% if has_nozzle %}
     SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=nozzle_temp VALUE={params.NOZZLE|float}
-    SAVE_VARIABLE VARIABLE=spoolman_cache_nozzle VALUE={params.NOZZLE|float}
   {% endif %}
   {% if has_bed %}
     SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=bed_temp VALUE={params.BED|float}
-    SAVE_VARIABLE VARIABLE=spoolman_cache_bed VALUE={params.BED|float}
   {% endif %}
   {% if has_remaining %}
     SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=remaining_g VALUE={params.REMAINING_G|float}
@@ -69,25 +49,27 @@ gcode:
   {% endif %}
   {% if has_pa %}
     SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=pressure_advance VALUE={params.PRESSURE_ADVANCE|float}
-    SAVE_VARIABLE VARIABLE=spoolman_cache_pa VALUE={params.PRESSURE_ADVANCE|float}
   {% endif %}
   {% if has_z %}
     SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=z_offset VALUE={params.Z_OFFSET|float}
-    SAVE_VARIABLE VARIABLE=spoolman_cache_z_offset VALUE={params.Z_OFFSET|float}
   {% endif %}
   {% if has_fan %}
     SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=fan_lock VALUE={params.FAN_LOCK|int}
-    SAVE_VARIABLE VARIABLE=spoolman_cache_fan_lock VALUE={params.FAN_LOCK|int}
+  {% endif %}
+  {% if has_purge %}
+    {% set purge_mm = params.INITIAL_PURGE_DISTANCE|float %}
+    {% if purge_mm < 0.0 %}{% set purge_mm = 0.0 %}{% endif %}
+    {% if purge_mm > 300.0 %}{% set purge_mm = 300.0 %}{% endif %}
+    SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=initial_purge_distance VALUE={purge_mm}
   {% endif %}
 
   # Marcar como synced cuando llega cualquier dato util desde Spoolman.
-  {% if has_nozzle or has_bed or has_remaining or has_pa or has_z or has_fan %}
+  {% if has_nozzle or has_bed or has_remaining or has_pa or has_z or has_fan or has_purge %}
     SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=synced VALUE=1
-    SAVE_VARIABLE VARIABLE=spoolman_cache_synced VALUE=1
   {% endif %}
 
-  {% if not has_nozzle and not has_bed and not has_remaining and not has_vendor and not has_name and not has_material and not has_pa and not has_z and not has_fan %}
-    { action_respond_info("Uso: SYNC_SPOOLMAN_NOW NOZZLE=<temp> BED=<temp> REMAINING_G=<g> PRESSURE_ADVANCE=<float> Z_OFFSET=<float> FAN_LOCK=<0|1>") }
+  {% if not has_nozzle and not has_bed and not has_remaining and not has_vendor and not has_name and not has_material and not has_pa and not has_z and not has_fan and not has_purge %}
+    { action_respond_info("Uso: SYNC_SPOOLMAN_NOW NOZZLE=<temp> BED=<temp> REMAINING_G=<g> PRESSURE_ADVANCE=<float> Z_OFFSET=<float> FAN_LOCK=<0|1> INITIAL_PURGE_DISTANCE=<mm>") }
   {% endif %}
 
 
