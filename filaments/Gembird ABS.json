@@ -1,0 +1,18 @@
+{
+    "filament_extruder_variant": [
+        "Direct Drive Standard"
+    ],
+    "filament_settings_id": [
+        "Gembird ABS"
+    ],
+    "from": "User",
+    "inherits": "UP Fila ABS TIERTIME @AN01-CE3V301 - 0.4 nozzle",
+    "name": "Gembird ABS",
+    "nozzle_temperature": [
+        "250"
+    ],
+    "nozzle_temperature_initial_layer": [
+        "250"
+    ],
+    "version": "2.3.0.4"
+}

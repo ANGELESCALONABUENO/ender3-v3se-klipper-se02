@@ -1,0 +1,24 @@
+{
+    "filament_extruder_variant": [
+        "Direct Drive Standard"
+    ],
+    "filament_settings_id": [
+        "ELEGOO PLA Básico "
+    ],
+    "from": "User",
+    "inherits": "ELEGOO PLA Básico @Creality Ender-3 V3 SE 0.4 nozzle",
+    "name": "ELEGOO PLA Básico ",
+    "nozzle_temperature": [
+        "180"
+    ],
+    "nozzle_temperature_initial_layer": [
+        "180"
+    ],
+    "nozzle_temperature_range_high": [
+        "180"
+    ],
+    "nozzle_temperature_range_low": [
+        "180"
+    ],
+    "version": "2.3.0.4"
+}

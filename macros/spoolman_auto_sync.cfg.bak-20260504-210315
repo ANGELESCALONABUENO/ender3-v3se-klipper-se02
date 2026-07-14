@@ -1,0 +1,21 @@
+[gcode_macro SPOOLMAN_SYNC_AT_PRINT_START]
+description: Dispara sincronización automática desde Moonraker (Spoolman -> Klipper)
+gcode:
+  # Evita usar datos viejos si el sync falla por cualquier motivo.
+  SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=vendor VALUE='""'
+  SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=filament_name VALUE='""'
+  SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=material VALUE='""'
+  SET_GCODE_VARIABLE MACRO=SPOOLMAN_ACTIVE VARIABLE=synced VALUE=0
+
+  # Ejecuta el sync local como shell_command de Klipper (más confiable que remote_method).
+  RUN_SHELL_COMMAND CMD=spoolman_sync
+
+[delayed_gcode SPOOLMAN_IDLE_SYNC_LOOP]
+initial_duration: 60
+gcode:
+  {% set state = printer.print_stats.state|string|lower %}
+  {% if state != "printing" and state != "paused" %}
+    SPOOLMAN_SYNC_AT_PRINT_START
+  {% endif %}
+  UPDATE_DELAYED_GCODE ID=SPOOLMAN_IDLE_SYNC_LOOP DURATION=60
+
